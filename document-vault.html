@@ -8,6 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.0/tesseract.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
 /* ============================================================
    MY DOCUMENT HUB — DESIGN TOKENS
@@ -392,6 +393,39 @@ button{ font-family:inherit; cursor:pointer; }
 .dropzone.drag{ border-color:var(--p2); background:var(--p-tint); }
 .dropzone p{ font-size:12.5px; color:var(--muted); margin-top:4px; }
 .dropzone .filename{ font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--p2); margin-top:6px; word-break:break-all; }
+/* Force native form controls (select/option) to follow the theme — some browsers otherwise
+   render <option> text using an OS-level color that stays white-on-white in dark mode. */
+select{ color-scheme: inherit; }
+select option{ background:var(--surface); color:var(--text); }
+input::placeholder, textarea::placeholder{ color:var(--faint); opacity:1; }
+
+/* ---- extra attachments (back side / extra pages) ---- */
+.attach-slot{ display:flex; align-items:center; gap:10px; border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:8px; background:var(--raised); }
+.attach-slot .ic{ width:34px; height:34px; border-radius:8px; background:var(--surface-alt); display:flex; align-items:center; justify-content:center; flex-shrink:0; color:var(--p2); }
+.attach-slot .meta{ flex:1; min-width:0; }
+.attach-slot .meta .lbl{ font-size:12px; font-weight:600; color:var(--text); }
+.attach-slot .meta .fn{ font-size:11.5px; color:var(--muted); word-break:break-all; }
+.attach-slot .btns{ display:flex; gap:6px; flex-shrink:0; }
+.attach-slot .btns button{ background:none; border:1px solid var(--border); color:var(--text); border-radius:7px; padding:6px 8px; font-size:11.5px; }
+.attach-slot .btns button:hover{ border-color:var(--p2); }
+.attach-slot .btns button.del{ color:var(--alarm); }
+.attach-add-btn{ width:100%; border:1.5px dashed var(--border-strong); border-radius:10px; padding:10px; background:none; color:var(--muted); font-size:12.5px; font-weight:600; margin-bottom:14px; }
+.attach-add-btn:hover{ border-color:var(--p2); color:var(--p2); }
+
+/* ---- camera capture modal ---- */
+#cameraOverlay .modal{ max-width:480px; }
+#cameraVideo{ width:100%; border-radius:10px; background:#000; display:block; }
+#cameraCanvas{ display:none; }
+
+/* ---- bulk selection ---- */
+.doc-card{ position:relative; }
+.doc-card .select-check{ position:absolute; top:10px; left:10px; width:20px; height:20px; z-index:3; display:none; accent-color:var(--p2); }
+.doc-grid.select-mode .doc-card .select-check{ display:block; }
+.doc-grid.select-mode .doc-card{ cursor:pointer; }
+.doc-grid.select-mode .doc-card .actions{ pointer-events:none; opacity:.4; }
+.doc-card.selected{ outline:2px solid var(--p2); outline-offset:-2px; }
+.bulk-bar{ position:sticky; bottom:14px; display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--border); box-shadow:var(--shadow); border-radius:12px; padding:10px 14px; margin-top:14px; }
+.bulk-bar .count{ font-size:13px; font-weight:600; color:var(--text); margin-right:auto; }
 
 /* ---- file preview + crop tool ---- */
 .preview-stage{ margin-bottom:16px; border:1px solid var(--border); border-radius:10px; overflow:hidden; background:var(--raised); }
@@ -648,14 +682,16 @@ button{ font-family:inherit; cursor:pointer; }
       </button>
     </div>
     <div class="modal-body">
+      <div id="dropzoneLabel" style="font-size:12.5px;font-weight:600;color:var(--text);margin-bottom:6px;">Document file</div>
       <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()"
            ondragover="event.preventDefault(); this.classList.add('drag')"
            ondragleave="this.classList.remove('drag')"
            ondrop="handleDrop(event)">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style="margin:0 auto;display:block;"><path d="M12 15V4M12 4l-4 4M12 4l4 4" stroke="var(--p2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="var(--p2)" stroke-width="2" stroke-linecap="round"/></svg>
-        <p>Click or drag in a PDF, image or Word file (max 8 MB)</p>
+        <p id="dropzoneHint">Click or drag in a PDF, image or Word file (max 8 MB)</p>
         <div class="filename" id="fileNameLabel"></div>
       </div>
+      <button type="button" class="btn-secondary" style="width:100%;margin:-6px 0 14px;font-size:12.5px;" onclick="event.stopPropagation(); openCamera('main')">📷 Use camera instead</button>
       <input type="file" id="fileInput" accept=".pdf,.doc,.docx,image/*" style="display:none" onchange="handleFileSelect(this.files[0])">
 
       <div class="preview-stage" id="previewStage" style="display:none;">
@@ -676,6 +712,8 @@ button{ font-family:inherit; cursor:pointer; }
           <div><div class="t" id="filePreviewName"></div><div class="s" id="filePreviewMeta">No visual preview for this file type</div></div>
         </div>
       </div>
+
+      <div id="extraAttachmentsWrap"></div>
 
       <div class="field"><label>Document name</label><input type="text" id="fName" placeholder="e.g. Aadhaar Card"></div>
       <div class="row2">
@@ -712,6 +750,23 @@ button{ font-family:inherit; cursor:pointer; }
     <div class="modal-body" id="viewBody"></div>
     <div class="modal-foot">
       <a class="btn-primary" id="viewDownload" download style="text-decoration:none;">Download file</a>
+    </div>
+  </div>
+</div>
+
+<!-- ============ CAMERA CAPTURE MODAL ============ -->
+<div class="overlay" id="cameraOverlay">
+  <div class="modal">
+    <div class="modal-head"><h3>Capture with camera</h3><button onclick="closeCamera()">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></div>
+    <div class="modal-body">
+      <video id="cameraVideo" autoplay playsinline muted></video>
+      <canvas id="cameraCanvas"></canvas>
+      <div id="cameraError" style="color:var(--alarm);font-size:12.5px;margin-top:10px;display:none;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-secondary" onclick="closeCamera()">Cancel</button>
+      <button class="btn-primary" onclick="capturePhoto()">📷 Capture</button>
     </div>
   </div>
 </div>
@@ -793,6 +848,7 @@ const NAV = [
 
 /* ---------------- State ---------------- */
 let state = { view:'dashboard', docs:[], people:[], events:[], eventLog:[], search:'', catFilter:'all', statusFilter:'all', personFilter:null, theme:'dark', userName:'', pendingFile:null, croppedDataUrl:null,
+  extraAttachments:[], cameraTarget:null, cameraStream:null, selectMode:false, selectedDocs:new Set(),
   gdrive: { clientId: localStorage.getItem('mdh_gdrive_client_id')||'', accessToken:null, connected:false, fileId: localStorage.getItem('mdh_gdrive_file_id')||null, lastSync: localStorage.getItem('mdh_gdrive_last_sync')||null } };
 let encryptionKey = null; // CryptoKey, memory-only
 let db = null;
@@ -866,7 +922,7 @@ function bytesToB64(bytes){ let bin=''; bytes.forEach(b=>bin+=String.fromCharCod
 function b64ToBytes(b64){ const bin=atob(b64); const bytes=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i); return bytes; }
 
 /* ---------------- Backend (Google Apps Script) auth API ---------------- */
-const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbz9ChvgIolfoWKaChU1AOidGR9a5sycI37uOffK2mJAjQDWoktR76xVz610YpdFIQ/exec';
+const WEB_APP_URL = 'PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';
 let session = { sessionToken: null, username: null };
 async function api(action, payload){
   const body = Object.assign({ action }, payload || {});
@@ -1599,10 +1655,12 @@ function renderDocumentsView(){
       <button class="chip ${state.statusFilter==='valid'?'active':''}" onclick="setStatusFilter('valid')">Valid</button>
       <button class="chip ${state.statusFilter==='expiring'?'active':''}" onclick="setStatusFilter('expiring')">Expiring soon</button>
       <button class="chip ${state.statusFilter==='expired'?'active':''}" onclick="setStatusFilter('expired')">Expired</button>
+      <button class="btn-secondary" style="margin-left:auto;" onclick="toggleSelectMode()">${state.selectMode ? 'Cancel select' : '☑ Select'}</button>
     </div>
-    <div class="doc-grid">
+    <div class="doc-grid ${state.selectMode?'select-mode':''}">
       ${docs.length ? docs.map(d=>docCardHtml(d)).join('') : `<div class="empty-row" style="grid-column:1/-1;">No documents match — try a different filter, or add a document.</div>`}
     </div>
+    ${bulkBarHtml()}
   `;
 }
 function renderPersonPicker(){
@@ -1654,7 +1712,8 @@ function docCardHtml(d){
   const stampText = status==='expired' ? 'EXPIRED' : status==='expiring' ? `${daysUntil(d.expiryDate)}D LEFT` : status==='valid' ? 'VALID' : '';
   const person = state.people.find(p=>p.id===d.personId);
   return `
-    <div class="doc-card">
+    <div class="doc-card ${state.selectedDocs.has(d.id)?'selected':''}" ${state.selectMode?`onclick="toggleDocSelected('${d.id}')"`:''}>
+      <input type="checkbox" class="select-check" ${state.selectedDocs.has(d.id)?'checked':''} onclick="event.stopPropagation(); toggleDocSelected('${d.id}')">
       <div class="stamp ${status}"><span>${stampText}</span></div>
       <div class="top">
         <div class="ic" style="color:${c.color}">${c.icon}</div>
@@ -2186,10 +2245,167 @@ function populateSubcats(){
   const sel = document.getElementById('fSubcategory');
   sel.innerHTML = CATEGORIES[cat].subs.map(s=>`<option value="${s}">${s}</option>`).join('') + `<option value="Other">Other — add a new type</option>`;
   onSubcatChange();
+  updateAttachmentUI();
 }
 function onSubcatChange(){
   const isOther = document.getElementById('fSubcategory').value === 'Other';
   document.getElementById('fSubcategoryOtherWrap').style.display = isOther ? 'block' : 'none';
+}
+
+/* ---------------- Attachments: KYC front/back + multi-page uploads ---------------- */
+function isKycCategory(){ return document.getElementById('fCategory').value === 'kyc'; }
+function updateAttachmentUI(){
+  const kyc = isKycCategory();
+  document.getElementById('dropzoneLabel').textContent = kyc ? 'Front side of document' : 'Document file';
+  document.getElementById('dropzoneHint').textContent = kyc
+    ? 'Click or drag in the front side (PDF or image, max 8 MB)'
+    : 'Click or drag in a PDF, image or Word file (max 8 MB) — you can add more pages below';
+  renderExtraAttachments();
+}
+function uidLocal(){ return 'a' + Math.random().toString(36).slice(2,10); }
+function addExtraSlot(kind){
+  // kind: 'kyc-back' | 'page'
+  const kyc = isKycCategory();
+  if(kyc && state.extraAttachments.some(a=>a.slotType==='kyc-back' && !a.removed)){ return; }
+  state.extraAttachments.push({ id: uidLocal(), slotType: kind, kindData:'empty', label: kyc ? 'Back side' : `Page ${state.extraAttachments.filter(a=>!a.removed).length+2}`, file:null, fileName:null, fileType:null, fileIv:null, fileData:null, removed:false });
+  renderExtraAttachments();
+}
+function removeExtraSlot(id){
+  const slot = state.extraAttachments.find(a=>a.id===id);
+  if(!slot) return;
+  if(slot.kindData==='existing'){ slot.removed = true; } // keep record so we know to drop it on save
+  else { state.extraAttachments = state.extraAttachments.filter(a=>a.id!==id); }
+  renderExtraAttachments();
+}
+function extraSlotFileChosen(id, file){
+  if(!file) return;
+  const slot = state.extraAttachments.find(a=>a.id===id);
+  if(!slot) return;
+  slot.file = file; slot.kindData = 'new'; slot.fileName = file.name; slot.fileType = file.type;
+  renderExtraAttachments();
+}
+function triggerExtraSlotPicker(id){
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = '.pdf,.doc,.docx,image/*';
+  input.onchange = ()=> extraSlotFileChosen(id, input.files[0]);
+  input.click();
+}
+function attachIcon(){ return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 3h9l5 5v13a1 1 0 01-1 1H6a1 1 0 01-1-1V4a1 1 0 011-1z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>`; }
+function renderExtraAttachments(){
+  const wrap = document.getElementById('extraAttachmentsWrap');
+  if(!wrap) return;
+  const kyc = isKycCategory();
+  const visible = state.extraAttachments.filter(a=>!a.removed);
+  let html = visible.map(slot=>{
+    const hasFile = slot.kindData==='new' || slot.kindData==='existing';
+    const fname = hasFile ? (slot.fileName || 'On file') : 'No file selected yet';
+    return `<div class="attach-slot">
+      <div class="ic">${attachIcon()}</div>
+      <div class="meta"><div class="lbl">${escapeHtml(slot.label)}${kyc?' <span style="color:var(--faint);font-weight:400;">(optional)</span>':''}</div><div class="fn">${escapeHtml(fname)}</div></div>
+      <div class="btns">
+        <button type="button" onclick="triggerExtraSlotPicker('${slot.id}')">📁</button>
+        <button type="button" onclick="openCamera('${slot.id}')">📷</button>
+        <button type="button" class="del" onclick="removeExtraSlot('${slot.id}')">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+  if(kyc){
+    if(visible.length===0){
+      html += `<button type="button" class="attach-add-btn" onclick="addExtraSlot('kyc-back')">+ Add back side (optional — skip if this document has none)</button>`;
+    }
+  } else {
+    html += `<button type="button" class="attach-add-btn" onclick="addExtraSlot('page')">+ Add another page</button>`;
+  }
+  wrap.innerHTML = html;
+}
+
+/* ---------------- Camera capture ---------------- */
+async function openCamera(target){
+  state.cameraTarget = target;
+  document.getElementById('cameraError').style.display='none';
+  document.getElementById('cameraOverlay').classList.add('show');
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' }, audio:false });
+    state.cameraStream = stream;
+    document.getElementById('cameraVideo').srcObject = stream;
+  }catch(e){
+    const err = document.getElementById('cameraError');
+    err.textContent = 'Could not access the camera. Check that this page has camera permission and is loaded over HTTPS (or localhost).';
+    err.style.display='block';
+  }
+}
+function closeCamera(){
+  if(state.cameraStream){ state.cameraStream.getTracks().forEach(t=>t.stop()); state.cameraStream=null; }
+  document.getElementById('cameraOverlay').classList.remove('show');
+}
+function capturePhoto(){
+  const video = document.getElementById('cameraVideo');
+  if(!video.videoWidth){ return; }
+  const canvas = document.getElementById('cameraCanvas');
+  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  canvas.toBlob((blob)=>{
+    const file = new File([blob], `camera-capture-${Date.now()}.jpg`, { type:'image/jpeg' });
+    if(state.cameraTarget === 'main'){ handleFileSelect(file); }
+    else { extraSlotFileChosen(state.cameraTarget, file); }
+    closeCamera();
+  }, 'image/jpeg', 0.92);
+}
+
+/* ---------------- Bulk selection (delete / download) ---------------- */
+function toggleSelectMode(){
+  state.selectMode = !state.selectMode;
+  if(!state.selectMode) state.selectedDocs.clear();
+  renderDocumentsView();
+}
+function toggleDocSelected(id){
+  if(state.selectedDocs.has(id)) state.selectedDocs.delete(id); else state.selectedDocs.add(id);
+  renderDocumentsView();
+}
+function bulkBarHtml(){
+  if(!state.selectMode || state.selectedDocs.size===0) return '';
+  return `<div class="bulk-bar">
+    <span class="count">${state.selectedDocs.size} selected</span>
+    <button class="btn-secondary" onclick="bulkDownloadSelected()">⬇ Download</button>
+    <button class="btn-danger" onclick="bulkDeleteSelected()">${iTrash()} Delete</button>
+  </div>`;
+}
+async function bulkDeleteSelected(){
+  if(!confirm(`Delete ${state.selectedDocs.size} document(s)? This cannot be undone.`)) return;
+  for(const id of Array.from(state.selectedDocs)){ await idbDelete('docs', id); }
+  state.selectedDocs.clear(); state.selectMode = false;
+  await loadDocs(); renderSidebar(); navigate(state.view);
+  toast('Selected documents deleted.', 'success');
+}
+async function bulkDownloadSelected(){
+  const zip = new JSZip();
+  for(const id of Array.from(state.selectedDocs)){
+    const d = state.docs.find(x=>x.id===id);
+    if(!d) continue;
+    const folder = zip.folder(sanitizeFileName(d.name || id));
+    try{
+      if(d.fileData){
+        const dataUrl = await decryptString(encryptionKey, d.fileIv, d.fileData);
+        if(dataUrl && dataUrl.startsWith('data:')) folder.file(d.fileName || 'document', dataUrlToBlob(dataUrl));
+      }
+      for(const att of (d.attachments||[])){
+        const dataUrl = await decryptString(encryptionKey, att.fileIv, att.fileData);
+        if(dataUrl && dataUrl.startsWith('data:')) folder.file(att.fileName || att.label || 'attachment', dataUrlToBlob(dataUrl));
+      }
+    }catch(e){ /* skip file that fails to decrypt */ }
+  }
+  const blob = await zip.generateAsync({type:'blob'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'documents.zip'; a.click();
+  toast('Zip download started.', 'success');
+}
+function sanitizeFileName(s){ return (s||'document').replace(/[\\/:*?"<>|]/g,'-').slice(0,80); }
+function dataUrlToBlob(dataUrl){
+  const [meta, b64] = dataUrl.split(',');
+  const mime = meta.match(/data:(.*?);base64/)[1];
+  const bin = atob(b64); const bytes = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
 }
 function openDocModal(id){
   editingId = id || null;
@@ -2197,12 +2413,19 @@ function openDocModal(id){
   document.getElementById('fCategory').innerHTML = Object.entries(CATEGORIES).map(([k,c])=>`<option value="${k}">${c.label}</option>`).join('');
   document.getElementById('fPerson').innerHTML = state.people.map(p=>`<option value="${p.id}">${escapeHtml(p.name)} (${p.relation})</option>`).join('');
   resetFileUI();
+  state.extraAttachments = [];
 
   if(id){
     const d = state.docs.find(x=>x.id===id);
     document.getElementById('fName').value = d.name;
     document.getElementById('fCategory').value = d.category;
     populateSubcats();
+    state.extraAttachments = (d.attachments||[]).map(att=>({
+      id: uidLocal(), slotType: d.category==='kyc' ? 'kyc-back' : 'page', kindData:'existing',
+      label: att.label || 'Back side', fileName: att.fileName, fileType: att.fileType,
+      fileIv: att.fileIv, fileData: att.fileData, file:null, removed:false
+    }));
+    renderExtraAttachments();
     const knownSubs = CATEGORIES[d.category].subs;
     if(knownSubs.includes(d.subcategory)){
       document.getElementById('fSubcategory').value = d.subcategory;
@@ -2223,10 +2446,11 @@ function openDocModal(id){
     if(state.catFilter!=='all') document.getElementById('fCategory').value = state.catFilter;
     if(state.personFilter && state.personFilter!=='all') document.getElementById('fPerson').value = state.personFilter;
     ['fName','fIssue','fExpiry','fDesc','fTags','fSubcategoryOther'].forEach(id=>document.getElementById(id).value='');
+    populateSubcats();
   }
   document.getElementById('docOverlay').classList.add('show');
 }
-function closeDocModal(){ document.getElementById('docOverlay').classList.remove('show'); }
+function closeDocModal(){ document.getElementById('docOverlay').classList.remove('show'); state.extraAttachments = []; }
 
 function resetFileUI(){
   state.pendingFile = null;
@@ -2423,10 +2647,22 @@ async function saveDocument(){
     fileName='(no file attached)'; fileType=''; fileIv=enc.iv; fileData=enc.data;
   }
 
+  const attachments = [];
+  for(const slot of state.extraAttachments){
+    if(slot.removed) continue;
+    if(slot.kindData==='existing'){
+      attachments.push({ label: slot.label, fileName: slot.fileName, fileType: slot.fileType, fileIv: slot.fileIv, fileData: slot.fileData });
+    } else if(slot.kindData==='new' && slot.file){
+      const dataUrl = await fileToDataURL(slot.file);
+      const enc = await encryptString(encryptionKey, dataUrl);
+      attachments.push({ label: slot.label, fileName: slot.file.name, fileType: slot.file.type, fileIv: enc.iv, fileData: enc.data });
+    }
+  }
+
   const personId = document.getElementById('fPerson').value || null;
   const doc = {
     id: editingId || uid(), name, category, subcategory, personId, issueDate, expiryDate, description, tags,
-    fileName, fileType, fileIv, fileData,
+    fileName, fileType, fileIv, fileData, attachments,
     addedAt: editingId ? state.docs.find(x=>x.id===editingId).addedAt : Date.now(),
   };
   await idbPut('docs', doc);
@@ -2466,6 +2702,7 @@ async function viewDocument(id){
     <div class="field"><label>Description</label><div style="font-size:13px;color:var(--muted);">${escapeHtml(d.description)||'—'}</div></div>
     <div class="field"><label>Tags</label><div class="tags">${(d.tags||[]).map(t=>`<span class="tag-pill">${escapeHtml(t)}</span>`).join('') || '—'}</div></div>
     <div class="field"><label>File</label><div class="mono" style="font-size:12.5px;">${escapeHtml(d.fileName||'—')}</div></div>
+    <div id="viewAttachmentsSlot"></div>
   `;
   try{
     const dataUrl = await decryptString(encryptionKey, d.fileIv, d.fileData);
@@ -2489,6 +2726,29 @@ async function viewDocument(id){
   }catch(e){
     document.getElementById('viewDownload').style.display='none';
   }
+  const attSlot = document.getElementById('viewAttachmentsSlot');
+  if(attSlot && d.attachments && d.attachments.length){
+    let html = `<div class="field"><label>Additional pages / back side</label></div>`;
+    for(let i=0;i<d.attachments.length;i++){
+      const att = d.attachments[i];
+      try{
+        const dataUrl = await decryptString(encryptionKey, att.fileIv, att.fileData);
+        if(dataUrl && dataUrl.startsWith('data:image/')){
+          html += `<div style="margin-bottom:12px;">
+            <div class="mono" style="font-size:11.5px;color:var(--muted);margin-bottom:4px;">${escapeHtml(att.label||('Page '+(i+2)))}</div>
+            <img src="${dataUrl}" alt="${escapeHtml(att.label||'attachment')}" style="width:100%;max-height:300px;object-fit:contain;border-radius:10px;background:var(--raised);border:1px solid var(--border);">
+            <a class="btn-secondary" style="margin-top:6px;display:inline-flex;text-decoration:none;" href="${dataUrl}" download="${escapeHtml(att.fileName||att.label||'attachment')}">Download</a>
+          </div>`;
+        } else if(dataUrl){
+          html += `<div class="file-preview-card" style="margin-bottom:12px;"><div class="ic">📄</div><div><div class="t">${escapeHtml(att.label||att.fileName||'Attachment')}</div><div class="s">${escapeHtml(att.fileName||'')}</div></div>
+            <a class="btn-secondary" style="margin-left:auto;text-decoration:none;" href="${dataUrl}" download="${escapeHtml(att.fileName||'attachment')}">Download</a></div>`;
+        }
+      }catch(e){ /* skip broken attachment */ }
+    }
+    attSlot.innerHTML = html;
+  } else if(attSlot){
+    attSlot.innerHTML = '';
+  }
   document.getElementById('viewOverlay').classList.add('show');
 }
 async function openPreviewTab(id){
@@ -2506,8 +2766,9 @@ function closeViewModal(){ document.getElementById('viewOverlay').classList.remo
 document.getElementById('docOverlay').addEventListener('mousedown', (e)=>{ if(e.target.id==='docOverlay') closeDocModal(); });
 document.getElementById('viewOverlay').addEventListener('mousedown', (e)=>{ if(e.target.id==='viewOverlay') closeViewModal(); });
 document.getElementById('formOverlay').addEventListener('mousedown', (e)=>{ if(e.target.id==='formOverlay') closeFormModal(); });
+document.getElementById('cameraOverlay').addEventListener('mousedown', (e)=>{ if(e.target.id==='cameraOverlay') closeCamera(); });
 window.addEventListener('keydown', (e)=>{
-  if(e.key==='Escape'){ closeDocModal(); closeViewModal(); closeFormModal(); }
+  if(e.key==='Escape'){ closeDocModal(); closeViewModal(); closeFormModal(); closeCamera(); }
 });
 
 window.addEventListener('DOMContentLoaded', initAuthScreen);
