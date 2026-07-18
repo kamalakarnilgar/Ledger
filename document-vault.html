@@ -866,7 +866,7 @@ function bytesToB64(bytes){ let bin=''; bytes.forEach(b=>bin+=String.fromCharCod
 function b64ToBytes(b64){ const bin=atob(b64); const bytes=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i); return bytes; }
 
 /* ---------------- Backend (Google Apps Script) auth API ---------------- */
-const WEB_APP_URL = 'PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';
+const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbz9ChvgIolfoWKaChU1AOidGR9a5sycI37uOffK2mJAjQDWoktR76xVz610YpdFIQ/exec';
 let session = { sessionToken: null, username: null };
 async function api(action, payload){
   const body = Object.assign({ action }, payload || {});
