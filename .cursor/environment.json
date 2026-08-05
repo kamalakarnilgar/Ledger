@@ -1,0 +1,11 @@
+{
+  "name": "Ledger — Family Investment Tracker",
+  "install": "chmod +x scripts/local-dev-server.py",
+  "terminals": [
+    {
+      "name": "Ledger dev server",
+      "command": "python3 scripts/local-dev-server.py --host 0.0.0.0 --port 8080"
+    }
+  ],
+  "ports": [8080]
+}
